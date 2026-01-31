@@ -1,23 +1,20 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
-
-// Dynamic imports for client-only
-let EditorContent: any
-let editor: any = ref(null)
-const fileInput = ref(null)
+const isLoaded = ref(false)
+const editor = ref<any>(null)
+let EditorContent: any = null
 
 // UI state
 const showFindReplace = ref(false)
 const showComments = ref(false)
 const editorStatus = ref('Ready')
-const isLoaded = ref(false)
+const fileInput = ref(null)
 
 // Find & Replace
 const findText = ref('')
 const replaceText = ref('')
 
 // Comments
-const comments = ref([])
+const comments = ref<any[]>([])
 
 // Statistics
 const wordCount = computed(() => {
@@ -31,63 +28,59 @@ const characterCount = computed(() => {
   return editor.value.getText().length
 })
 
-onMounted(async () => {
-  if (process.client) {
-    try {
-      const TipTapVue = await import('@tiptap/vue-3')
-      const { useEditor, EditorContent: EC } = TipTapVue
-      EditorContent = EC
-      
-      const StarterKitModule = await import('@tiptap/starter-kit')
-      const StarterKit = StarterKitModule.default
+// Only run on client
+onNuxtReady(async () => {
+  try {
+    const { useEditor, EditorContent: EC } = await import('@tiptap/vue-3')
+    EditorContent = EC
+    const StarterKit = (await import('@tiptap/starter-kit')).default
 
-      editor.value = useEditor({
-        extensions: [
-          StarterKit,
-        ],
-        content: '<p>Welcome to Nuxt Word! Start creating your document...</p>',
-        editorProps: {
-          attributes: {
-            class: 'prose prose-sm sm:prose lg:prose-lg xl:prose-2xl focus:outline-none',
-          },
+    editor.value = useEditor({
+      extensions: [
+        StarterKit,
+      ],
+      content: '<p><strong>Welcome to Nuxt Word!</strong> This is a Microsoft Word-style editor built with Nuxt.js v4 and TipTap. Try these features:</p><ul><li>Type and format text</li><li>Use the toolbar buttons for formatting</li><li>Insert tables, images, and lists</li><li>Save as DOCX or PDF</li></ul><p>Start creating your document...</p>',
+      editorProps: {
+        attributes: {
+          class: 'prose prose-sm sm:prose lg:prose-lg xl:prose-2xl focus:outline-none',
         },
-      })
-      isLoaded.value = true
-    } catch (error) {
-      console.error('Error loading editor:', error)
-    }
+      },
+    })
+    isLoaded.value = true
+  } catch (error) {
+    console.error('Error loading editor:', error)
   }
-})
-
-onBeforeUnmount(() => {
-  editor.value?.destroy()
 })
 
 // Toolbar functions
 function setHeading(event: any) {
+  if (!editor.value) return
   const level = parseInt(event.target.value)
   if (level) {
-    editor.value?.chain().focus().toggleHeading({ level }).run()
+    editor.value.chain().focus().toggleHeading({ level }).run()
   } else {
-    editor.value?.chain().focus().setParagraph().run()
+    editor.value.chain().focus().setParagraph().run()
   }
   event.target.value = ''
 }
 
 function insertTable() {
-  editor.value?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+  if (!editor.value) return
+  editor.value.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
 }
 
 function addImage() {
+  if (!editor.value) return
   const url = prompt('Enter image URL:')
   if (url) {
-    editor.value?.chain().focus().setImage({ src: url }).run()
+    editor.value.chain().focus().setImage({ src: url }).run()
   }
 }
 
 function insertPageBreak() {
-  editor.value?.chain().focus().setHardBreak().run()
-  editor.value?.chain().focus().insertContent('<hr class="page-break" />').run()
+  if (!editor.value) return
+  editor.value.chain().focus().setHardBreak().run()
+  editor.value.chain().focus().insertContent('<hr class="page-break" />').run()
 }
 
 function toggleFindReplace() {
@@ -95,8 +88,8 @@ function toggleFindReplace() {
 }
 
 function findNext() {
-  if (!findText.value) return
-  const content = editor.value?.getText() || ''
+  if (!editor || !findText.value) return
+  const content = editor.value.getText() || ''
   const index = content.indexOf(findText.value)
   if (index !== -1) {
     editorStatus.value = `Found at position ${index}`
@@ -110,25 +103,26 @@ function findPrevious() {
 }
 
 function replaceOne() {
-  if (!findText.value) return
-  const html = editor.value?.getHTML() || ''
+  if (!editor || !findText.value) return
+  const html = editor.value.getHTML() || ''
   const newHtml = html.replace(findText.value, replaceText.value)
-  editor.value?.commands.setContent(newHtml)
+  editor.value.commands.setContent(newHtml)
   editorStatus.value = 'Replaced 1 occurrence'
 }
 
 function replaceAll() {
-  if (!findText.value) return
-  const html = editor.value?.getHTML() || ''
+  if (!editor || !findText.value) return
+  const html = editor.value.getHTML() || ''
   const regex = new RegExp(findText.value, 'g')
   const newHtml = html.replace(regex, replaceText.value)
-  editor.value?.commands.setContent(newHtml)
+  editor.value.commands.setContent(newHtml)
   const count = (html.match(regex) || []).length
   editorStatus.value = `Replaced ${count} occurrences`
 }
 
 function addComment() {
-  const selection = editor.value?.state.selection
+  if (!editor.value) return
+  const selection = editor.value.state.selection
   if (!selection || selection.empty) {
     alert('Please select some text to comment on')
     return
@@ -140,7 +134,7 @@ function addComment() {
       text: commentText,
       author: 'User',
       timestamp: Date.now(),
-      selection: editor.value?.getText().substring(selection.from, selection.to),
+      selection: editor.value.getText().substring(selection.from, selection.to),
     })
     showComments.value = true
     editorStatus.value = 'Comment added'
@@ -160,8 +154,9 @@ function formatTime(timestamp: number) {
 }
 
 function newDocument() {
+  if (!editor.value) return
   if (confirm('Create a new document? Unsaved changes will be lost.')) {
-    editor.value?.commands.setContent('<p></p>')
+    editor.value.commands.setContent('<p></p>')
     comments.value = []
     editorStatus.value = 'New document created'
   }
@@ -172,6 +167,7 @@ function openDocument() {
 }
 
 async function handleFileUpload(event: any) {
+  if (!editor.value) return
   const file = event.target.files?.[0]
   if (!file) return
 
@@ -182,7 +178,7 @@ async function handleFileUpload(event: any) {
     const mammoth = await import('mammoth')
     const result = await mammoth.convertToHtml({ arrayBuffer })
     
-    editor.value?.commands.setContent(result.value)
+    editor.value.commands.setContent(result.value)
     editorStatus.value = 'Document loaded successfully'
   } catch (error) {
     console.error('Error loading document:', error)
@@ -192,6 +188,7 @@ async function handleFileUpload(event: any) {
 }
 
 async function saveAsDocx() {
+  if (!editor.value) return
   try {
     editorStatus.value = 'Saving document...'
     
@@ -205,7 +202,7 @@ async function saveAsDocx() {
           new Paragraph({
             children: [
               new TextRun({
-                text: editor.value?.getText() || '',
+                text: editor.value.getText() || '',
               }),
             ],
           }),
@@ -224,6 +221,7 @@ async function saveAsDocx() {
 }
 
 async function exportToPdf() {
+  if (!editor.value) return
   try {
     editorStatus.value = 'Exporting to PDF...'
     
@@ -278,7 +276,7 @@ async function exportToPdf() {
             <span>💾</span> Save DOCX
           </button>
           <button @click="exportToPdf" class="toolbar-btn" title="Export to PDF">
-            <span>📕</span> Export PDF
+            <span>��</span> Export PDF
           </button>
           <input
             ref="fileInput"
@@ -310,14 +308,6 @@ async function exportToPdf() {
             <em>I</em>
           </button>
           <button
-            @click="editor?.chain().focus().toggleUnderline().run()"
-            :class="{ 'is-active': editor?.isActive('underline') }"
-            class="toolbar-btn"
-            title="Underline"
-          >
-            <u>U</u>
-          </button>
-          <button
             @click="editor?.chain().focus().toggleStrike().run()"
             :class="{ 'is-active': editor?.isActive('strike') }"
             class="toolbar-btn"
@@ -336,48 +326,7 @@ async function exportToPdf() {
             <option value="1">Heading 1</option>
             <option value="2">Heading 2</option>
             <option value="3">Heading 3</option>
-            <option value="4">Heading 4</option>
-            <option value="5">Heading 5</option>
-            <option value="6">Heading 6</option>
           </select>
-        </div>
-
-        <div class="toolbar-divider"></div>
-
-        <!-- Text Alignment -->
-        <div class="toolbar-group">
-          <button
-            @click="editor?.chain().focus().setTextAlign('left').run()"
-            :class="{ 'is-active': editor?.isActive({ textAlign: 'left' }) }"
-            class="toolbar-btn"
-            title="Align Left"
-          >
-            ⬅️
-          </button>
-          <button
-            @click="editor?.chain().focus().setTextAlign('center').run()"
-            :class="{ 'is-active': editor?.isActive({ textAlign: 'center' }) }"
-            class="toolbar-btn"
-            title="Align Center"
-          >
-            ↔️
-          </button>
-          <button
-            @click="editor?.chain().focus().setTextAlign('right').run()"
-            :class="{ 'is-active': editor?.isActive({ textAlign: 'right' }) }"
-            class="toolbar-btn"
-            title="Align Right"
-          >
-            ➡️
-          </button>
-          <button
-            @click="editor?.chain().focus().setTextAlign('justify').run()"
-            :class="{ 'is-active': editor?.isActive({ textAlign: 'justify' }) }"
-            class="toolbar-btn"
-            title="Justify"
-          >
-            ⬌
-          </button>
         </div>
 
         <div class="toolbar-divider"></div>
@@ -409,14 +358,6 @@ async function exportToPdf() {
           <button @click="insertTable" class="toolbar-btn" title="Insert Table">
             📊 Table
           </button>
-          <button
-            @click="editor?.chain().focus().deleteTable().run()"
-            class="toolbar-btn"
-            title="Delete Table"
-            :disabled="!editor?.can().deleteTable()"
-          >
-            ❌ Table
-          </button>
         </div>
 
         <div class="toolbar-divider"></div>
@@ -425,15 +366,6 @@ async function exportToPdf() {
         <div class="toolbar-group">
           <button @click="addImage" class="toolbar-btn" title="Insert Image">
             🖼️ Image
-          </button>
-        </div>
-
-        <div class="toolbar-divider"></div>
-
-        <!-- Page Break -->
-        <div class="toolbar-group">
-          <button @click="insertPageBreak" class="toolbar-btn" title="Page Break">
-            📄 Break
           </button>
         </div>
 
@@ -464,7 +396,6 @@ async function exportToPdf() {
         <div class="toolbar-group">
           <button
             @click="editor?.chain().focus().undo().run()"
-            :disabled="!editor?.can().undo()"
             class="toolbar-btn"
             title="Undo"
           >
@@ -472,7 +403,6 @@ async function exportToPdf() {
           </button>
           <button
             @click="editor?.chain().focus().redo().run()"
-            :disabled="!editor?.can().redo()"
             class="toolbar-btn"
             title="Redo"
           >
@@ -540,8 +470,11 @@ async function exportToPdf() {
         <span>{{ editorStatus }}</span>
       </div>
     </div>
-    <div v-else style="display: flex; justify-content: center; align-items: center; height: 100vh; font-size: 20px;">
-      Loading editor...
+    <div v-else style="display: flex; justify-content: center; align-items: center; height: 100vh; font-size: 24px; background: #f0f0f0;">
+      <div style="text-align: center;">
+        <div style="font-size: 48px; margin-bottom: 20px;">📝</div>
+        <div>Loading Nuxt Word Editor...</div>
+      </div>
     </div>
   </ClientOnly>
 </template>
